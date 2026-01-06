@@ -23,21 +23,27 @@ def check_connection(config):
     host, port = decode_ss(config)
     if not host or not port: return None
     try:
-        with socket.create_connection((host, port), timeout=3):
+        # تست اتصال با تایم‌اوت کوتاه برای سرعت بیشتر
+        with socket.create_connection((host, port), timeout=2.5):
             return config
     except: return None
 
 def main():
     response = requests.get(SOURCE_URL)
-    configs = list(set(response.text.splitlines())) # حذف تکراری‌ها
+    configs = list(set(response.text.splitlines()))
     
     with ThreadPoolExecutor(max_workers=50) as executor:
         results = list(executor.map(check_connection, configs))
     
     healthy = [c for c in results if c is not None]
     
+    # استانداردسازی برای اپلیکیشن‌ها:
+    # تبدیل لیست به یک متن واحد و سپس کدگذاری کل متن به Base64
+    combined_configs = "\n".join(healthy)
+    encoded_output = base64.b64encode(combined_configs.encode('utf-8')).decode('utf-8')
+    
     with open("healthy_ss.txt", "w") as f:
-        f.write("\n".join(healthy))
+        f.write(encoded_output)
 
 if __name__ == "__main__":
     main()
