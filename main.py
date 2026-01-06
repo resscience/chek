@@ -1,58 +1,95 @@
 import requests
 import socket
 import base64
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+# منبع اصلی
 SOURCE_URL = "https://raw.githubusercontent.com/Epodonios/v2ray-configs/refs/heads/main/Splitted-By-Protocol/ss.txt"
 
 def decode_ss(config):
     try:
-        config = config.strip()
-        if not config.startswith('ss://'): return None
-        clean_link = config.split('#')[0].replace('ss://', '')
-        if '@' in clean_link:
-            server_part = clean_link.split('@')[1]
-            host, port = server_part.split(':')
-            return host.split('/')[0], int(port.split('/')[0])
-    except: return None, None
+        # استخراج بخش اصلی لینک قبل از علامت #
+        link_part = config.split('#')[0].replace('ss://', '')
+        
+        if '@' in link_part:
+            # فرمت استاندارد: ss://method:pass@host:port
+            server_info = link_part.split('@')[1]
+            # حذف پارامترهای احتمالی بعد از پورت
+            host_port = re.split(r'[/?]', server_info)[0]
+            host, port = host_port.split(':')
+            return host, int(port)
+        else:
+            # فرمت تمام Base64
+            decoded = base64.b64decode(link_part + '===').decode('utf-8', errors='ignore')
+            match = re.search(r'([^@:]+):(\d+)$', decoded) # پیدا کردن host:port در انتهای متن
+            if not match:
+                match = re.search(r'@([^:]+):(\d+)', decoded)
+            if match:
+                return match.group(1), int(match.group(2))
+    except:
+        pass
+    return None, None
 
 def check_connection(config):
     host, port = decode_ss(config)
-    if not host or not port: return None
+    if not host or not port:
+        return None
     try:
-        # افزایش تایم‌اوت به 7 ثانیه برای سرورهای کندتر
+        # تست اتصال با تایم‌اوت 7 ثانیه
         with socket.create_connection((host, port), timeout=7):
             return config
-    except: return None
+    except:
+        return None
 
 def main():
-    print("Fetching...")
-    response = requests.get(SOURCE_URL)
-    configs = [line for line in response.text.splitlines() if line.strip()]
-    
-    with ThreadPoolExecutor(max_workers=40) as executor:
-        results = list(executor.map(check_connection, configs))
-    
-    healthy = [c for c in results if c is not None]
-    
-    # اضافه کردن یک نام متغیر به انتهای هر کانفیگ برای تغییر محتوا و شناسایی
-    # این کار باعث می‌شود گیت‌هاب همیشه تغییر را حس کند
-    final_configs = []
-    current_time = time.strftime("%H:%M")
-    for c in healthy:
-        final_configs.append(f"{c.split('#')[0]}#Checked_{current_time}")
+    print("Fetching configs...")
+    try:
+        response = requests.get(SOURCE_URL, timeout=15)
+        content = response.text
+        
+        # پیدا کردن تمام لینک‌هایی که با ss:// شروع می‌شوند با استفاده از Regex
+        # این کار باعث می‌شود حتی اگر فضایی قبل یا بعد لینک باشد، باز هم پیدا شود
+        configs = re.findall(r'ss://[^\s]+', content)
+        
+        print(f"Found {len(configs)} raw configs. Testing...")
+        
+        if not configs:
+            print("No ss:// links found in the source!")
+            return
 
-    if final_configs:
-        combined = "\n".join(final_configs)
-        encoded_output = base64.b64encode(combined.encode('utf-8')).decode('utf-8')
-        with open("healthy_ss.txt", "w") as f:
-            f.write(encoded_output)
-        print(f"Success! Found {len(healthy)} healthy configs.")
-    else:
-        # اگر هیچی سالم نبود، یک فایل خالی با یک کاراکتر رندوم بساز که آپدیت شود
-        with open("healthy_ss.txt", "w") as f:
-            f.write(f"No_Active_Configs_At_{current_time}")
+        # تست همزمان برای سرعت بالا
+        with ThreadPoolExecutor(max_workers=50) as executor:
+            results = list(executor.map(check_connection, configs))
+        
+        healthy = [c for c in results if c is not None]
+        print(f"Healthy configs: {len(healthy)}")
+        
+        current_time = time.strftime("%Y-%m-%d %H:%M")
+        
+        if healthy:
+            # اضافه کردن برچسب زمان به انتهای هر کانفیگ
+            final_list = []
+            for c in healthy:
+                clean_c = c.split('#')[0]
+                final_list.append(f"{clean_c}#Updated_{current_time.replace(' ', '_')}")
+            
+            combined = "\n".join(final_list)
+            # تبدیل کل لیست به Base64 برای استفاده در اپلیکیشن‌ها
+            encoded_output = base64.b64encode(combined.encode('utf-8')).decode('utf-8')
+            
+            with open("healthy_ss.txt", "w") as f:
+                f.write(encoded_output)
+            print("File 'healthy_ss.txt' updated successfully.")
+        else:
+            # اگر هیچ‌کدام کار نکرد، فایل را با یک متن ساده آپدیت کن که بدانی اسکریپت اجرا شده
+            with open("healthy_ss.txt", "w") as f:
+                f.write(base64.b64encode(f"None_Found_At_{current_time}".encode()).decode())
+            print("No healthy configs found, file updated with empty state.")
+
+    except Exception as e:
+        print(f"Error occurred: {e}")
 
 if __name__ == "__main__":
     main()
