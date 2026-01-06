@@ -2,8 +2,8 @@ name: SS Config Checker
 
 on:
   schedule:
-    - cron: '0 * * * *' # اجرای خودکار سر هر ساعت
-  workflow_dispatch: # امکان اجرای دستی
+    - cron: '0 * * * *'
+  workflow_dispatch:
 
 jobs:
   build:
@@ -23,18 +23,12 @@ jobs:
       - name: Run checker
         run: python main.py
 
-            - name: Commit and Push
+      - name: Commit and Push
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          
           git pull origin main --rebase
-          touch healthy_ss.txt
-          git add healthy_ss.txt
-          
-          if git diff --staged --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "Update healthy configs"
-            git push origin main
+          if [ -f healthy_ss.txt ]; then
+            git add healthy_ss.txt
+            git diff --staged --quiet || (git commit -m "Update healthy configs" && git push origin main)
           fi
