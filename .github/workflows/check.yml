@@ -28,14 +28,10 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           
-          # همگام‌سازی با مخزن برای جلوگیری از خطای rejected
           git pull origin main --rebase
-          
-          # ایجاد یا آپدیت فایل
           touch healthy_ss.txt
           git add healthy_ss.txt
           
-          # ثبت تغییرات فقط در صورت وجود تغییر واقعی
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
