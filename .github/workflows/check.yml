@@ -23,10 +23,22 @@ jobs:
       - name: Run checker
         run: python main.py
 
-      - name: Commit and Push
+            - name: Commit and Push
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
+          
+          # همگام‌سازی با مخزن برای جلوگیری از خطای rejected
+          git pull origin main --rebase
+          
+          # ایجاد یا آپدیت فایل
+          touch healthy_ss.txt
           git add healthy_ss.txt
-          git commit -m "Update healthy configs" || exit 0
-          git push
+          
+          # ثبت تغییرات فقط در صورت وجود تغییر واقعی
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update healthy configs"
+            git push origin main
+          fi
